@@ -1,0 +1,19 @@
+{
+  "name": "komikkuya-discord-bot",
+  "version": "1.0.0",
+  "description": "Discord bot for comic update notifications",
+  "main": "src/bot.js",
+  "scripts": {
+    "start": "node src/bot.js",
+    "dev": "node src/bot.js"
+  },
+  "dependencies": {
+    "@napi-rs/canvas": "^0.1.88",
+    "axios": "^1.13.2",
+    "body-parser": "^2.2.1",
+    "discord.js": "^14.14.1",
+    "express": "^5.2.1",
+    "gif-encoder-2": "^1.0.5",
+    "jsonwebtoken": "^9.0.3"
+  }
+}
