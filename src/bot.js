@@ -6,6 +6,7 @@ const voiceController = require('./controllers/voiceController');
 const welcomeController = require('./controllers/welcomeController');
 const verifyController = require('./controllers/verifyController');
 const mirrorController = require('./controllers/mirrorController');
+const musicController = require('./controllers/musicController');
 const embedBuilder = require('./utils/embedBuilder');
 
 // Create Discord client
@@ -62,12 +63,44 @@ client.once(Events.ClientReady, async (readyClient) => {
 });
 
 client.on(Events.InteractionCreate, async (interaction) => {
+    // Handle Slash Commands
+    if (interaction.isChatInputCommand()) {
+        const { commandName } = interaction;
+
+        switch (commandName) {
+            case 'playlink':
+                await musicController.handlePlayLink(interaction);
+                break;
+            case 'playsearch':
+                await musicController.handlePlaySearch(interaction);
+                break;
+            case 'skip':
+                await musicController.handleSkip(interaction);
+                break;
+            case 'stop':
+                await musicController.handleStop(interaction);
+                break;
+            case 'pause':
+                await musicController.handlePause(interaction);
+                break;
+            case 'resume':
+                await musicController.handleResume(interaction);
+                break;
+            case 'queue':
+                await musicController.handleQueue(interaction);
+                break;
+        }
+        return;
+    }
+
     // Handle button & menu interactions
     if (interaction.isButton() || interaction.isModalSubmit() || interaction.isAnySelectMenu()) {
         if (interaction.customId.startsWith('tv_') || interaction.customId.startsWith('modal_tv_')) {
             await voiceController.handleInteraction(interaction);
         } else if (interaction.customId.startsWith('verify_')) {
             await verifyController.handleInteraction(interaction);
+        } else if (interaction.customId === 'music_search_select') {
+            await musicController.handleSearchSelect(interaction);
         }
     }
 });
