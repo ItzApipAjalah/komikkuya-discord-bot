@@ -5,6 +5,7 @@ const commandController = require('./controllers/commandController');
 const voiceController = require('./controllers/voiceController');
 const welcomeController = require('./controllers/welcomeController');
 const verifyController = require('./controllers/verifyController');
+const mirrorController = require('./controllers/mirrorController');
 const embedBuilder = require('./utils/embedBuilder');
 
 // Create Discord client
@@ -73,6 +74,10 @@ client.on(Events.InteractionCreate, async (interaction) => {
 
 // Handle message commands
 client.on(Events.MessageCreate, async (message) => {
+    // Handle mirroring first
+    await mirrorController.handleMirrorMessage(message);
+
+    // Handle other commands
     await commandController.processCommand(message);
 });
 

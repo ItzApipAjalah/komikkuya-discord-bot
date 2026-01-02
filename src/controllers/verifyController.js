@@ -13,6 +13,9 @@ const config = require('../config/config');
 
 let discordClient;
 
+// Cache for user tokens (userId -> { token, expiresAt })
+const tokenCache = new Map();
+
 /**
  * Initialize Verify System Web Server
  * @param {Client} client - Discord Client
@@ -31,36 +34,234 @@ function init(client) {
         try {
             const decoded = jwt.verify(token, config.JWT_SECRET);
 
-            // Basic HTML with hCaptcha
+            // Modern HTML with hCaptcha and Font Awesome
             const html = `
-                <!DOCTYPE html>
-                <html lang="en">
-                <head>
-                    <meta charset="UTF-8">
-                    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-                    <title>Komikkuya Verification</title>
-                    <script src="https://js.hcaptcha.com/1/api.js" async defer></script>
-                    <style>
-                        body { background: #1a1a1b; color: white; font-family: sans-serif; display: flex; justify-content: center; align-items: center; height: 100vh; margin: 0; }
-                        .card { background: #2f3136; padding: 40px; border-radius: 12px; box-shadow: 0 4px 20px rgba(0,0,0,0.5); text-align: center; max-width: 400px; width: 90%; }
-                        h1 { color: #BE00FF; margin-bottom: 10px; }
-                        p { color: #b9bbbe; margin-bottom: 30px; }
-                        .btn { background: #BE00FF; color: white; border: none; padding: 12px 24px; border-radius: 6px; font-weight: bold; cursor: pointer; width: 100%; margin-top: 20px; }
-                        .btn:hover { background: #9d00d3; }
-                    </style>
-                </head>
-                <body>
-                    <div class="card">
-                        <h1>Verification</h1>
-                        <p>Selesaikan captcha di bawah untuk mendapatkan akses ke server.</p>
-                        <form action="/api/verify-success" method="POST">
-                            <input type="hidden" name="token" value="${token}">
-                            <div class="h-captcha" data-sitekey="${config.HCAPTCHA_SITE_KEY}"></div>
-                            <button type="submit" class="btn">Verify Me</button>
-                        </form>
-                    </div>
-                </body>
-                </html>
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Komikkuya Verification</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
+    <script src="https://js.hcaptcha.com/1/api.js" async defer></script>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        body {
+            font-family: 'Inter', sans-serif;
+            min-height: 100vh;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            background: linear-gradient(135deg, #0d0d0f 0%, #1a0a1f 50%, #0d0d0f 100%);
+            padding: 20px;
+            position: relative;
+            overflow: hidden;
+        }
+        
+        /* Animated background orbs */
+        body::before, body::after {
+            content: '';
+            position: fixed;
+            border-radius: 50%;
+            filter: blur(100px);
+            opacity: 0.4;
+            animation: float 8s ease-in-out infinite;
+        }
+        
+        body::before {
+            width: 400px;
+            height: 400px;
+            background: rgba(138, 43, 226, 0.3);
+            top: -100px;
+            left: -100px;
+        }
+        
+        body::after {
+            width: 300px;
+            height: 300px;
+            background: rgba(190, 0, 255, 0.25);
+            bottom: -50px;
+            right: -50px;
+            animation-delay: -4s;
+        }
+        
+        @keyframes float {
+            0%, 100% { transform: translate(0, 0) scale(1); }
+            50% { transform: translate(30px, -30px) scale(1.1); }
+        }
+        
+        .card {
+            background: rgba(20, 12, 28, 0.85);
+            backdrop-filter: blur(20px);
+            -webkit-backdrop-filter: blur(20px);
+            border: 1px solid rgba(138, 43, 226, 0.2);
+            border-radius: 24px;
+            padding: 48px 40px;
+            max-width: 420px;
+            width: 100%;
+            text-align: center;
+            position: relative;
+            z-index: 1;
+            box-shadow: 
+                0 25px 50px -12px rgba(0, 0, 0, 0.5),
+                0 0 0 1px rgba(138, 43, 226, 0.1),
+                inset 0 1px 0 rgba(255, 255, 255, 0.05);
+        }
+        
+        .icon-wrapper {
+            width: 80px;
+            height: 80px;
+            background: linear-gradient(135deg, #8a2be2 0%, #be00ff 100%);
+            border-radius: 20px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            margin: 0 auto 24px;
+            box-shadow: 0 8px 32px rgba(190, 0, 255, 0.3);
+        }
+        
+        .icon-wrapper i {
+            font-size: 36px;
+            color: white;
+        }
+        
+        h1 {
+            color: #ffffff;
+            font-size: 28px;
+            font-weight: 700;
+            margin-bottom: 12px;
+            letter-spacing: -0.5px;
+        }
+        
+        p {
+            color: rgba(255, 255, 255, 0.6);
+            font-size: 15px;
+            line-height: 1.6;
+            margin-bottom: 32px;
+        }
+        
+        .captcha-container {
+            display: flex;
+            justify-content: center;
+            margin-bottom: 24px;
+        }
+        
+        .h-captcha {
+            transform-origin: center;
+        }
+        
+        .btn {
+            width: 100%;
+            padding: 16px 24px;
+            background: linear-gradient(135deg, #8a2be2 0%, #be00ff 100%);
+            border: none;
+            border-radius: 12px;
+            color: white;
+            font-family: 'Inter', sans-serif;
+            font-size: 16px;
+            font-weight: 600;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 10px;
+            transition: all 0.3s ease;
+            box-shadow: 0 4px 20px rgba(190, 0, 255, 0.3);
+        }
+        
+        .btn:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 8px 30px rgba(190, 0, 255, 0.4);
+        }
+        
+        .btn:active {
+            transform: translateY(0);
+        }
+        
+        .footer {
+            margin-top: 32px;
+            padding-top: 24px;
+            border-top: 1px solid rgba(138, 43, 226, 0.15);
+        }
+        
+        .footer p {
+            font-size: 13px;
+            color: rgba(255, 255, 255, 0.4);
+            margin-bottom: 0;
+        }
+        
+        .footer a {
+            color: #be00ff;
+            text-decoration: none;
+            font-weight: 500;
+        }
+        
+        .footer a:hover {
+            text-decoration: underline;
+        }
+        
+        /* Responsive */
+        @media (max-width: 480px) {
+            .card {
+                padding: 36px 24px;
+                border-radius: 20px;
+            }
+            
+            .icon-wrapper {
+                width: 64px;
+                height: 64px;
+                border-radius: 16px;
+            }
+            
+            .icon-wrapper i {
+                font-size: 28px;
+            }
+            
+            h1 {
+                font-size: 24px;
+            }
+            
+            p {
+                font-size: 14px;
+            }
+            
+            .h-captcha {
+                transform: scale(0.9);
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="card">
+        <div class="icon-wrapper">
+            <i class="fa-solid fa-shield-halved"></i>
+        </div>
+        <h1>Verification</h1>
+        <p>Selesaikan captcha di bawah untuk memverifikasi bahwa kamu bukan bot dan mendapatkan akses ke server.</p>
+        <form action="/api/verify-success" method="POST">
+            <input type="hidden" name="token" value="${token}">
+            <div class="captcha-container">
+                <div class="h-captcha" data-sitekey="${config.HCAPTCHA_SITE_KEY}" data-theme="dark"></div>
+            </div>
+            <button type="submit" class="btn">
+                <i class="fa-solid fa-check-circle"></i>
+                Verify Me
+            </button>
+        </form>
+        <div class="footer">
+            <p>Protected by <a href="https://komikkuya.my.id" target="_blank">Komikkuya</a></p>
+        </div>
+    </div>
+</body>
+</html>
             `;
             res.send(html);
         } catch (err) {
@@ -101,12 +302,120 @@ function init(client) {
             await member.roles.add(roleId).catch(console.error);
 
             res.send(`
-                <body style="background: #1a1a1b; color: white; display:flex; justify-content:center; align-items:center; height:100vh; font-family:sans-serif;">
-                    <div style="text-align:center;">
-                        <h1 style="color: #43b581;">✅ Verified Successfully!</h1>
-                        <p>Kamu sudah diberikan role member. Sekarang kamu bisa kembali ke Discord.</p>
-                    </div>
-                </body>
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Verification Successful - Komikkuya</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body {
+            font-family: 'Inter', sans-serif;
+            min-height: 100vh;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            background: linear-gradient(135deg, #0d0d0f 0%, #1a0a1f 50%, #0d0d0f 100%);
+            padding: 20px;
+            position: relative;
+            overflow: hidden;
+        }
+        body::before {
+            content: '';
+            position: fixed;
+            width: 400px;
+            height: 400px;
+            background: rgba(67, 181, 129, 0.2);
+            border-radius: 50%;
+            filter: blur(100px);
+            top: -100px;
+            left: -100px;
+            animation: float 8s ease-in-out infinite;
+        }
+        body::after {
+            content: '';
+            position: fixed;
+            width: 300px;
+            height: 300px;
+            background: rgba(138, 43, 226, 0.2);
+            border-radius: 50%;
+            filter: blur(100px);
+            bottom: -50px;
+            right: -50px;
+            animation: float 8s ease-in-out infinite reverse;
+        }
+        @keyframes float {
+            0%, 100% { transform: translate(0, 0) scale(1); }
+            50% { transform: translate(30px, -30px) scale(1.1); }
+        }
+        .card {
+            background: rgba(20, 12, 28, 0.85);
+            backdrop-filter: blur(20px);
+            border: 1px solid rgba(67, 181, 129, 0.2);
+            border-radius: 24px;
+            padding: 48px 40px;
+            max-width: 420px;
+            width: 100%;
+            text-align: center;
+            position: relative;
+            z-index: 1;
+            box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.5);
+        }
+        .icon-wrapper {
+            width: 80px;
+            height: 80px;
+            background: linear-gradient(135deg, #2ecc71 0%, #43b581 100%);
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            margin: 0 auto 24px;
+            box-shadow: 0 8px 32px rgba(67, 181, 129, 0.3);
+        }
+        .icon-wrapper i { font-size: 36px; color: white; }
+        h1 { color: #43b581; font-size: 28px; font-weight: 700; margin-bottom: 12px; }
+        p { color: rgba(255, 255, 255, 0.6); font-size: 15px; line-height: 1.6; margin-bottom: 24px; }
+        .btn {
+            display: inline-flex;
+            align-items: center;
+            gap: 10px;
+            padding: 14px 28px;
+            background: linear-gradient(135deg, #8a2be2 0%, #be00ff 100%);
+            border-radius: 12px;
+            color: white;
+            text-decoration: none;
+            font-weight: 600;
+            transition: all 0.3s ease;
+            box-shadow: 0 4px 20px rgba(190, 0, 255, 0.3);
+        }
+        .btn:hover { transform: translateY(-2px); box-shadow: 0 8px 30px rgba(190, 0, 255, 0.4); }
+        @media (max-width: 480px) {
+            .card { padding: 36px 24px; }
+            .icon-wrapper { width: 64px; height: 64px; }
+            .icon-wrapper i { font-size: 28px; }
+            h1 { font-size: 24px; }
+        }
+    </style>
+</head>
+<body>
+    <div class="card">
+        <div class="icon-wrapper">
+            <i class="fa-solid fa-circle-check"></i>
+        </div>
+        <h1>Verified Successfully!</h1>
+        <p>Kamu sudah diberikan role member. Sekarang kamu bisa kembali ke Discord dan menikmati server.</p>
+        <a href="https://discord.com/channels/1456296379050885209" class="btn">
+            <i class="fa-brands fa-discord"></i>
+            Kembali ke Discord
+        </a>
+    </div>
+</body>
+</html>
             `);
 
         } catch (error) {
@@ -171,7 +480,7 @@ async function sendVerifyInterface(channel) {
         .setDescription('Selamat datang! Untuk mendapatkan akses penuh ke server ini, silakan klik tombol di bawah untuk memverifikasi bahwa kamu bukan bot.')
         .setColor(0xBE00FF)
         .setThumbnail('https://komikkuya.my.id/assets/icon.png')
-        .setImage('https://komikkuya.my.id/assets/verify_banner.png'); // Optional banner
+        .setImage('https://komikkuya.my.id/assets/og-image.png'); // Optional banner
 
     const row = new ActionRowBuilder().addComponents(
         new ButtonBuilder()
@@ -194,10 +503,34 @@ async function handleInteraction(interaction) {
     if (interaction.customId === 'verify_start') {
         const userId = interaction.user.id;
         const guildId = interaction.guildId;
+        const cacheKey = `${guildId}-${userId}`;
 
-        // Generate a token valid for 10 minutes
-        const token = jwt.sign({ userId, guildId }, config.JWT_SECRET, { expiresIn: '10m' });
-        const verifyLink = `${config.VERIFY_URL}/verify?token=${token}`;
+        let verifyLink;
+        const now = Date.now();
+
+        // Check if user has a cached token that's still valid
+        if (tokenCache.has(cacheKey)) {
+            const cached = tokenCache.get(cacheKey);
+            if (cached.expiresAt > now) {
+                // Reuse existing link
+                verifyLink = cached.link;
+            } else {
+                // Token expired, remove from cache
+                tokenCache.delete(cacheKey);
+            }
+        }
+
+        // Generate new token if not cached
+        if (!verifyLink) {
+            const token = jwt.sign({ userId, guildId }, config.JWT_SECRET, { expiresIn: '10m' });
+            verifyLink = `${config.VERIFY_URL}/verify?token=${token}`;
+
+            // Cache for 10 minutes
+            tokenCache.set(cacheKey, {
+                link: verifyLink,
+                expiresAt: now + (10 * 60 * 1000) // 10 minutes from now
+            });
+        }
 
         await interaction.reply({
             content: `🛡️ **Sistem Verifikasi**\n\nSilakan buka link di bawah ini dan selesaikan captcha:\n🔗 [Klik di Sini untuk Verifikasi](${verifyLink})\n\n*Link ini berlaku selama 10 menit.*`,
